@@ -1,3 +1,8 @@
+import std.stdio;
+import std.algorithm;
+import std.conv;
+import std.ascii;
+
 enum TokenType {
     Plus,
     Minus,
@@ -11,12 +16,23 @@ enum TokenType {
     String,
     Number,
     Identifier,
+    
+    LeftBrace,
+    RightBrace,
+    LeftBracket,
+    RightBracket,
+    
+    WhiteSpace,
 }
 private enum TokenTypeMap = [
     '+': TokenType.Plus,
     '-': TokenType.Minus,
     '.': TokenType.Dot,
     '=': TokenType.Equals,
+    '[': TokenType.LeftBracket,
+    ']': TokenType.RightBracket,
+    '{': TokenType.LeftBrace,
+    '}': TokenType.RightBrace,
 ];
 private enum TokenTypeMapKeyword = [
     "true": TokenType.True,
@@ -28,26 +44,27 @@ struct Token {
     TokenType type;
     string span;
 }
-import std.stdio;
-import std.conv;
-import std.ascii;
-import std.algorithm;
 
 void main() {
-	string test = `a = 10 b= 123c="abc" d.e-f."g.h"=true truef false null nullfalse`;
+	string test = `a = 10 b= 123c="abc" d.e-f."g.h"=true truef false null
+    nullfalse[false{null]true}"abc"`;
 	writeln(test);
 	auto b = lex(test);
-	b.each!writeln;
+	
+	//b.each!writeln;
 }
 /*
     TODO:
         add suport for hexadecimal, octal and binary numbers
-        when parsing string handles special characters and raw strings
+        when parsing string handles special characters and non-raw strings
+        right now it only handles raw strings
+        parseString could fail if the string isnt closed
+        do better error handling
 */
 Token[] lex(string str) {
-    ulong i = 0, len = str.length;
+    ulong i = 0, len = str.length, line = 1;
     Token[] tokens = [];
-    static immutable keywords = ["true", "false", "null"];
+    //static immutable keywords = ["true", "false", "null"];
     void addTokenAndAdvance(TokenType type, string text) {
         tokens ~= Token(type, text);
         i += text.length;
@@ -58,50 +75,63 @@ Token[] lex(string str) {
         if (ch in TokenTypeMap) {
             addTokenAndAdvance(TokenTypeMap[ch], ch.to!(string));
         } else if (ch.isAlpha()) {
-            ulong j = i + 1;
-            while (j < len && (str[j].isAlphaNum() || str[j] == '_' || str[j] == '-')) {
-                j++;
-            }
-            auto str2 = str[i .. j];
-            addTokenAndAdvance(TokenTypeMapKeyword.get(str2, TokenType.Identifier), str2);
-            i = j;
+            string parsedIdentifier = parseIdentifier(str, i);
+            addTokenAndAdvance(TokenTypeMapKeyword.get(parsedIdentifier, TokenType.Identifier), parsedIdentifier);
         } else if (ch.isDigit()) {
-            ulong j = i + 1;
-            while(j < len && str[j].isDigit()) {
-                j++;
-            }
-            addTokenAndAdvance(TokenType.Number, str[i .. j]);
+            string parsedNumber = parseNumber(str, i);
+            addTokenAndAdvance(TokenType.Number, parsedNumber);
         } else if (ch == '"') {
-            ulong j = i + 1;
-            while(j < len && (str[j] != '"')) {
-                j++;
-            }
-            j++;
-            addTokenAndAdvance(TokenType.String, str[i .. j]);
+            string parsedString = parseString(str, i);
+            addTokenAndAdvance(TokenType.String, parsedString);
         } else if (ch.isWhite()) {
-            i++;
+            if (tokens.length > 0 && tokens[$ - 1].type != TokenType.WhiteSpace) {
+                addTokenAndAdvance(TokenType.WhiteSpace, "");
+            }
+            if (ch == '\n') {
+                line += 1;
+            }
+            i += 1;
         } else {
             writefln("i: %s, ch: %s", i, ch);
-            i++;
+            i += 1;
         }
     }
     return tokens;
 }
-bool matchesAtIndex(string main_str, string other_str, ulong i) {
-    if (i + other_str.length > main_str.length) {
+bool matchesAtIndex(string haystack, string needle, ulong i) {
+    if (i + needle.length > haystack.length) {
         return false;
     }
-    return other_str == main_str[i .. i + other_str.length];
+    return needle == haystack[i .. i + needle.length];
 }
-/*
-<ident> = [a-zA-Z][a-zA-Z0-9_\-]*
-*/
-string foo(string main_str, ulong i) {
-    auto strs = ["false", "true", "null"];
-    foreach(x; strs) {
-        if (matchesAtIndex(main_str, x, i)) {
-            return x;
-        }
+string parseIdentifier(string str, ulong i) {
+    ulong j = i + 1, len = str.length;
+    while (j < len && (str[j].isAlphaNum() || str[j] == '_' || str[j] == '-')) {
+        j += 1;
     }
-    return "";
+    return str[i .. j];
+}
+string parseNumber(string str, ulong i) {
+    ulong j = i + 1, len = str.length;
+    while(j < len && str[j].isDigit()) {
+        j += 1;
+    }
+    return str[i .. j];
+    /*
+    string s = "10F";
+	auto a = parse!(int)(s, 16);
+	writeln(a);
+	writeln(s);
+    */
+}
+string parseString(string str, ulong i) {
+    ulong j = i + 1, len = str.length;
+    while(j < len && (str[j] != '"')) {
+        j += 1;
+    }
+    if (j == len) {
+        writeln("unclosed string");
+    }
+    j += 1;
+    return str[i .. j];
 }
