@@ -50,6 +50,13 @@ void main() {
     nullfalse[false{null]true}"abc"`;
 	writeln(test);
 	auto b = lex(test);
+	string s = "101a2";
+	auto n1 = parse!(int)(s);
+	auto n2 = parse!(char)(s);
+	auto n3 = parse!(int)(s);
+	writeln(n1);
+	writeln(n2);
+	writeln(n3);
 	
 	//b.each!writeln;
 }
@@ -118,6 +125,7 @@ string parseNumber(string str, ulong i) {
     }
     return str[i .. j];
     /*
+    maybe do with a regex
     string s = "10F";
 	auto a = parse!(int)(s, 16);
 	writeln(a);
