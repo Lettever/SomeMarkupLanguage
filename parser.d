@@ -2,6 +2,7 @@ import std.stdio;
 import std.algorithm;
 import std.conv;
 import std.ascii;
+import std.typecons;
 
 enum TokenType {
     Plus,
@@ -44,12 +45,19 @@ struct Token {
     TokenType type;
     string span;
 }
+alias TokenArray = Token[];
 
 void main() {
 	string test = `a = 10 b= 123c="abc" d.e-f."g.h"=true truef false null
     nullfalse[false{null]true}"abc"`;
 	writeln(test);
-	auto b = lex(test);
+	Nullable!TokenArray b = lex(test);
+	if (b.isNull()) {
+        writeln("lexing failed");
+        return;
+	}
+	b.get().each!writeln;
+	
 	string s = "101a2";
 	auto n1 = parse!(int)(s);
 	auto n2 = parse!(char)(s);
@@ -57,21 +65,18 @@ void main() {
 	writeln(n1);
 	writeln(n2);
 	writeln(n3);
-	
-	//b.each!writeln;
+	writeln(newline == "\r\n");	
 }
 /*
     TODO:
         add suport for hexadecimal, octal and binary numbers
         when parsing string handles special characters and non-raw strings
         right now it only handles raw strings
-        parseString could fail if the string isnt closed
         do better error handling
 */
-Token[] lex(string str) {
+Nullable!TokenArray lex(string str) {
     ulong i = 0, len = str.length, line = 1;
     Token[] tokens = [];
-    //static immutable keywords = ["true", "false", "null"];
     void addTokenAndAdvance(TokenType type, string text) {
         tokens ~= Token(type, text);
         i += text.length;
@@ -88,8 +93,11 @@ Token[] lex(string str) {
             string parsedNumber = parseNumber(str, i);
             addTokenAndAdvance(TokenType.Number, parsedNumber);
         } else if (ch == '"') {
-            string parsedString = parseString(str, i);
-            addTokenAndAdvance(TokenType.String, parsedString);
+            Nullable!string parsedString = parseString(str, i);
+            if (parsedString.isNull()) {
+                return Nullable!TokenArray.init;
+            }
+            addTokenAndAdvance(TokenType.String, parsedString.get());
         } else if (ch.isWhite()) {
             if (tokens.length > 0 && tokens[$ - 1].type != TokenType.WhiteSpace) {
                 addTokenAndAdvance(TokenType.WhiteSpace, "");
@@ -103,7 +111,7 @@ Token[] lex(string str) {
             i += 1;
         }
     }
-    return tokens;
+    return nullable(tokens);
 }
 bool matchesAtIndex(string haystack, string needle, ulong i) {
     if (i + needle.length > haystack.length) {
@@ -132,14 +140,14 @@ string parseNumber(string str, ulong i) {
 	writeln(s);
     */
 }
-string parseString(string str, ulong i) {
+Nullable!string parseString(string str, ulong i) {
     ulong j = i + 1, len = str.length;
     while(j < len && (str[j] != '"')) {
         j += 1;
     }
     if (j == len) {
-        writeln("unclosed string");
+        return Nullable!string.init;
     }
     j += 1;
-    return str[i .. j];
+    return nullable(str[i .. j]);
 }
