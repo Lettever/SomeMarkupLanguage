@@ -49,7 +49,7 @@ alias TokenArray = Token[];
 
 void main() {
 	string test = `a = 10 b= 123c="abc" d.e-f."g.h"=true truef false null
-    nullfalse[false{null]true}"abc"`;
+    nullfalse[false{null]true}"abc" 0x10 0o18 0o17 0b10101 0 `;
 	writeln(test);
 	Nullable!TokenArray b = lex(test);
 	if (b.isNull()) {
@@ -75,7 +75,7 @@ void main() {
         do better error handling
 */
 Nullable!TokenArray lex(string str) {
-    ulong i = 0, len = str.length, line = 1;
+    uint i = 0, len = str.length, line = 1;
     Token[] tokens = [];
     void addTokenAndAdvance(TokenType type, string text) {
         tokens ~= Token(type, text);
@@ -113,25 +113,55 @@ Nullable!TokenArray lex(string str) {
     }
     return nullable(tokens);
 }
-bool matchesAtIndex(string haystack, string needle, ulong i) {
+bool matchesAtIndex(string haystack, string needle, uint i) {
     if (i + needle.length > haystack.length) {
         return false;
     }
     return needle == haystack[i .. i + needle.length];
 }
-string parseIdentifier(string str, ulong i) {
-    ulong j = i + 1, len = str.length;
+string parseIdentifier(string str, uint i) {
+    uint j = i + 1, len = str.length;
     while (j < len && (str[j].isAlphaNum() || str[j] == '_' || str[j] == '-')) {
         j += 1;
     }
     return str[i .. j];
 }
-string parseNumber(string str, ulong i) {
-    ulong j = i + 1, len = str.length;
-    while(j < len && str[j].isDigit()) {
-        j += 1;
+string parseNumber(string str, uint i) {
+    uint j = i + 1, len = str.length;
+    if (str[i] == '0') {
+        if (i + 1 >= len) {
+            return "0";
+        } else if (str[j].toLower() == 'x') {
+            j += 1;
+            while(j < len && str[j].isHexDigit()) {
+                j += 1;
+            }
+            return str[i .. j];
+        } else if (str[j].toLower() == 'o') {
+            j += 1;
+            while(j < len && str[j].isOctalDigit()) {
+                j += 1;
+            }
+            return str[i .. j];
+        } else if (str[j].toLower() == 'b') {
+            j += 1;
+            while(j < len && str[j].isBinaryDigit()) {
+                j += 1;
+            }
+            return str[i .. j];
+        }
+    } else {
+        while(j < len && str[j].isDigit()) {
+            j += 1;
+        }
+        return str[i .. j];
     }
     return str[i .. j];
+    /*
+    hexadecimal = 0x\HexDigits+
+    octal = 0x\OctalDigits+
+    binary = 0b\BinaryDigits+
+    */
     /*
     maybe do with a regex
     string s = "10F";
@@ -140,8 +170,8 @@ string parseNumber(string str, ulong i) {
 	writeln(s);
     */
 }
-Nullable!string parseString(string str, ulong i) {
-    ulong j = i + 1, len = str.length;
+Nullable!string parseString(string str, uint i) {
+    uint j = i + 1, len = str.length;
     while(j < len && (str[j] != '"')) {
         j += 1;
     }
@@ -150,4 +180,7 @@ Nullable!string parseString(string str, ulong i) {
     }
     j += 1;
     return nullable(str[i .. j]);
+}
+bool isBinaryDigit(dchar c) {
+    return '0' <= c && c <= '1';
 }

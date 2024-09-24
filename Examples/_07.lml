@@ -1,2 +1,3 @@
-"f.g".h = true
-
+{
+    "f.g".h = true
+}
