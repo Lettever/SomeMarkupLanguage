@@ -3,6 +3,7 @@ import std.algorithm;
 import std.conv;
 import std.ascii;
 import std.typecons;
+import std.array;
 
 enum TokenType {
     Plus,
@@ -48,26 +49,22 @@ struct Token {
 alias TokenArray = Token[];
 
 void main() {
-	string test = `a = 10 b= 123c="abc" d.e-f."g.h"=true truef false null
-    nullfalse[false{null]true}"abc" 0x10 0o18 0o17 0b10101 0 `;
+	string test = `a = 11 b= 123 c="abc" d.e-f."g.h"=true truef false null
+    nullfalse[false{null true}]"abc" 0x10 0o1 8 0o17 0b10101 0 `;
 	writeln(test);
 	Nullable!TokenArray b = lex(test);
 	if (b.isNull()) {
         writeln("lexing failed");
         return;
 	}
-	b.get().each!writeln;
-	
-	string s = "101a2";
-	auto n1 = parse!(int)(s);
-	auto n2 = parse!(char)(s);
-	auto n3 = parse!(int)(s);
-	writeln(n1);
-	writeln(n2);
-	writeln(n3);
-	writeln(newline == "\r\n");	
+    auto b1 = b.get();
+	// b1.each!writeln;
+    writefln("|     %s", isTokenArrayValid(b1));
+    b1 = removeWhiteSpace(b1);
+    b1.each!writeln;
 }
 /*
+    After every number there cant be a number, an identifier or a strng
     TODO:
         add suport for hexadecimal, octal and binary numbers
         when parsing string handles special characters and non-raw strings
@@ -157,18 +154,6 @@ string parseNumber(string str, uint i) {
         return str[i .. j];
     }
     return str[i .. j];
-    /*
-    hexadecimal = 0x\HexDigits+
-    octal = 0x\OctalDigits+
-    binary = 0b\BinaryDigits+
-    */
-    /*
-    maybe do with a regex
-    string s = "10F";
-	auto a = parse!(int)(s, 16);
-	writeln(a);
-	writeln(s);
-    */
 }
 Nullable!string parseString(string str, uint i) {
     uint j = i + 1, len = str.length;
@@ -183,4 +168,43 @@ Nullable!string parseString(string str, uint i) {
 }
 bool isBinaryDigit(dchar c) {
     return '0' <= c && c <= '1';
+}
+bool isTokenArrayValid(TokenArray tokens) {
+    char[] parenthesesStack = [];
+    for (int i = 0; i < tokens.length; i++) {
+        auto token = tokens[i];
+        auto tokenType = token.type;
+        if (tokenType == TokenType.LeftBrace) { 
+            parenthesesStack ~= '{';
+        } else if (tokenType == TokenType.RightBrace) { 
+            if (parenthesesStack.length == 0 || parenthesesStack[$ - 1] != '{') {
+                return false;
+            }
+            parenthesesStack = parenthesesStack[0 .. $ - 1];
+        } else if (tokenType == TokenType.LeftBracket) {
+            parenthesesStack ~= '[';
+        } else if (tokenType == TokenType.RightBracket) {
+            if (parenthesesStack.length == 0 || parenthesesStack[$ - 1] != '[') {
+                writeln(TokenType.RightBracket, " ", parenthesesStack);
+                return false;
+            }
+            parenthesesStack = parenthesesStack[0 .. $ - 1];
+        } else if (tokenType == TokenType.Number) {
+            if (i + 1 < tokens.length) {
+                auto nextTokenType = tokens[i + 1].type;
+                bool nextTokenIsInvalid = (
+                    nextTokenType == TokenType.Number ||
+                    nextTokenType == TokenType.Identifier ||
+                    nextTokenType == TokenType.String
+                );
+                if (nextTokenIsInvalid) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+TokenArray removeWhiteSpace(TokenArray tokens) {
+    return tokens.filter!((x) => x.type != TokenType.WhiteSpace).array();
 }
