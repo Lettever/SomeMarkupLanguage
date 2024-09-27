@@ -4,6 +4,7 @@ import std.conv;
 import std.ascii;
 import std.typecons;
 import std.array;
+import std.json;
 
 enum TokenType {
     Plus,
@@ -26,7 +27,7 @@ enum TokenType {
     
     WhiteSpace,
 }
-private enum TokenTypeMap = [
+static immutable enum TokenTypeMap = [
     '+': TokenType.Plus,
     '-': TokenType.Minus,
     '.': TokenType.Dot,
@@ -36,7 +37,7 @@ private enum TokenTypeMap = [
     '{': TokenType.LeftBrace,
     '}': TokenType.RightBrace,
 ];
-private enum TokenTypeMapKeyword = [
+static immutable enum TokenTypeMapKeyword = [
     "true": TokenType.True,
     "false": TokenType.False,
     "null": TokenType.Null
@@ -49,8 +50,8 @@ struct Token {
 alias TokenArray = Token[];
 
 void main() {
-	string test = `a = 11 b= 123 c="abc" d.e-f."g.h"=true truef false null
-    nullfalse[false{null true}]"abc" 0x10 0o1 8 0o17 0b10101 0 `;
+    string test = `a = 11 b= 123 c="abc" d.e-f."g.h"=true truef false null
+    nullfalse[false{null true}]"abc" 0x10 0o1 8 0o17 0b10101 10.2 0.10`;
 	writeln(test);
 	Nullable!TokenArray b = lex(test);
 	if (b.isNull()) {
@@ -59,6 +60,7 @@ void main() {
 	}
     auto b1 = b.get();
 	// b1.each!writeln;
+
     writefln("|     %s", isTokenArrayValid(b1));
     b1 = removeWhiteSpace(b1);
     b1.each!writeln;
@@ -66,10 +68,10 @@ void main() {
 /*
     After every number there cant be a number, an identifier or a strng
     TODO:
-        add suport for hexadecimal, octal and binary numbers
         when parsing string handles special characters and non-raw strings
         right now it only handles raw strings
         do better error handling
+        add support for decimal numbers
 */
 Nullable!TokenArray lex(string str) {
     uint i = 0, len = str.length, line = 1;
@@ -123,6 +125,8 @@ string parseIdentifier(string str, uint i) {
     }
     return str[i .. j];
 }
+//str[i] != 0 || str[i + 1] == '.' -> parse decimal
+//str[i] == 0 && str[i + 1] != '.' -> parse special
 string parseNumber(string str, uint i) {
     uint j = i + 1, len = str.length;
     if (str[i] == '0') {
@@ -207,4 +211,7 @@ bool isTokenArrayValid(TokenArray tokens) {
 }
 TokenArray removeWhiteSpace(TokenArray tokens) {
     return tokens.filter!((x) => x.type != TokenType.WhiteSpace).array();
+}
+JSONValue toJson(TokenArray tokens) {
+    return JSONValue(10);
 }
