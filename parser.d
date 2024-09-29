@@ -59,10 +59,7 @@ void main() {
         return;
 	}
     auto b1 = b.get();
-	// b1.each!writeln;
-
-    writefln("|     %s", isTokenArrayValid(b1));
-    b1 = removeWhiteSpace(b1);
+	b1 = removeWhiteSpace(b1);
     b1.each!writeln;
 }
 /*
@@ -71,11 +68,13 @@ void main() {
         when parsing string handles special characters and non-raw strings
         right now it only handles raw strings
         do better error handling
-        add support for decimal numbers
+        test the floating point numbers numbers
+		abstract the j += 1; while into a function
 */
 Nullable!TokenArray lex(string str) {
-    uint i = 0, len = str.length, line = 1;
-    Token[] tokens = [];
+    uint i = 0, line = 1;
+	ulong len = str.length;
+	Token[] tokens = [];
     void addTokenAndAdvance(TokenType type, string text) {
         tokens ~= Token(type, text);
         i += text.length;
@@ -119,17 +118,23 @@ bool matchesAtIndex(string haystack, string needle, uint i) {
     return needle == haystack[i .. i + needle.length];
 }
 string parseIdentifier(string str, uint i) {
-    uint j = i + 1, len = str.length;
-    while (j < len && (str[j].isAlphaNum() || str[j] == '_' || str[j] == '-')) {
+    uint j = i + 1;
+	ulong len = str.length;
+	
+	while (j < len && (str[j].isAlphaNum() || str[j] == '_' || str[j] == '-')) {
         j += 1;
     }
     return str[i .. j];
 }
-//str[i] != 0 || str[i + 1] == '.' -> parse decimal
-//str[i] == 0 && str[i + 1] != '.' -> parse special
+// str[i] == 0 && str[i + 1] != '.' -> parse special
+// str[i] != 0 || str[i + 1] == '.' -> parse decimal
+
+
 string parseNumber(string str, uint i) {
-    uint j = i + 1, len = str.length;
-    if (str[i] == '0') {
+    uint j = i + 1;
+	ulong len = str.length;
+	
+	if (str[i] == '0') {
         if (i + 1 >= len) {
             return "0";
         } else if (str[j].toLower() == 'x') {
@@ -159,8 +164,64 @@ string parseNumber(string str, uint i) {
     }
     return str[i .. j];
 }
+// if (str[i] == '0' && str[i + 1] != '.'): parse special
+// else: parse decimal
+Nullable!string parseNumber2(string str, uint i) {
+	uint j = i + 1;
+	ulong len = str.length;
+	
+	if (j >= len) {
+		return nullable(str[i].to!(string));
+	}
+	if (str[i] == '0' && str[j] != '.') {
+		switch (str[j].toLower()) {
+		case 'x':
+			j += 1;
+			while(j < len && str[j].isHexDigit()) {
+				j += 1;
+			}
+		break;
+		case 'o':
+			j += 1;
+			while(j < len && str[j].isOctalDigit()) {
+				j += 1;
+			}
+		break;
+		case 'b':
+			j += 1;
+			while(j < len && str[j].isBinaryDigit()) {
+				j += 1;
+			}
+		break;
+		default:
+			return Nullable!string.init;
+		}
+		return nullable(str[i .. j]);
+	}
+	j = i + 1;
+	while (j < len && str[i].isDigit()) {
+		j += 1;
+	}
+	//1234.65
+	//i--j???
+	if (j + 1 < len && str[j + 1] != '.') {
+		return nullable(str[i .. j]);
+	}
+	j += 1;
+	//j + 1 == '.'
+	if (j + 1 < len || !str[j + 1].isDigit()) {
+		return Nullable!string.init;
+	}
+	j += 1;
+	while (j < len && str[j].isDigit()) {
+		j += 1;
+	}
+	return nullable(str[i .. j]);
+}
 Nullable!string parseString(string str, uint i) {
-    uint j = i + 1, len = str.length;
+    uint j = i + 1;
+	ulong len = str.length;
+	
     while(j < len && (str[j] != '"')) {
         j += 1;
     }
@@ -214,4 +275,7 @@ TokenArray removeWhiteSpace(TokenArray tokens) {
 }
 JSONValue toJson(TokenArray tokens) {
     return JSONValue(10);
+}
+uint advanceWhile(string str, uint i, bool function (char) fp) {
+	return i + fp(str[i]);
 }
