@@ -51,7 +51,7 @@ alias TokenArray = Token[];
 
 void main() {
     string test = `a = 11 b= 123 c="abc" d.e-f."g.h"=true truef false null
-    nullfalse[false{null true}]"abc" 0x10 0o1 8 0o17 0b10101 10.2 0.10 0`;
+    nullfalse[false{null true}]"abc" 0x10 0o1 8 0o17 0b10101 10.2 0.10 0 "abc"`;
     writeln(test);
     
     Nullable!TokenArray b = lex(test);
@@ -112,7 +112,7 @@ bool matchesAtIndex(string haystack, string needle, uint i) {
     return needle == haystack[i .. i + needle.length];
 }
 string parseIdentifier(string str, uint i) {
-    uint j =  advanceWhile(str, i + 1, (x) => isAlphaNum(x) || x == '_' || x == '-');
+    uint j = advanceWhile(str, i + 1, (x) => isAlphaNum(x) || x == '_' || x == '-');
     return str[i .. j];
 }
 // str[i] == 0 && str[i + 1] != '.' -> parse special
@@ -134,10 +134,15 @@ Nullable!string parseNumber(string str, uint i) {
             uint j = advanceWhile(str, i + 2, &isBinaryDigit);
             return nullable(str[i .. j]);
         break;
+        case ' ':
+            return nullable("0");
+            break;
         default:
+            //writeln("not valid special number", i);
             return Nullable!string.init;
         }
     }
+    
     uint j = advanceWhile(str, i + 1, &isDigit);
     if (str.getC(j, '\0') != '.') {
         return nullable(str[i .. j]);
@@ -154,6 +159,7 @@ Nullable!string parseString(string str, uint i) {
     ulong len = str.length;
     
     if (j > len) {
+        //writeln(j, " ", len, " out of bounds");
         return Nullable!string.init;
     }
     return nullable(str[i .. j]);
@@ -181,7 +187,6 @@ bool isTokenArrayValid(TokenArray tokens) {
             tokens[i + 1].isLiteralOrIdentifier()
         ) {
             writeln(tokens[i], " ", tokens[i + 1]);
-
             return false;
         }
     }
