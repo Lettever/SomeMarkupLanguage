@@ -1,2 +1,5 @@
 *.exe
 *.pdb
+a.txt
+parser.rs
+aiGenCode.py
