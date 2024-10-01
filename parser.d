@@ -60,19 +60,9 @@ void main() {
         return;
 	}
     auto b1 = b.get();
-	b1 = removeWhiteSpace(b1);
+	//b1 = removeWhiteSpace(b1);
     b1.each!writeln;
-    auto foo = (int x) => (int y) => x + y;
-    writeln(foo(10)(12));
 }
-/*
-    After every number there cant be a number, an identifier or a strng
-    TODO:
-        when parsing string handles special characters and non-raw strings
-        right now it only handles raw strings
-        keep track of the collum and line do better error handling
-        only need to update lines when str[i].isWhite() and when parsing strings
-*/
 Nullable!TokenArray lex(string str) {
     uint i = 0;
 	ulong len = str.length;
@@ -169,6 +159,7 @@ Nullable!string parseString(string str, uint i) {
 bool isBinaryDigit(dchar c) {
     return '0' <= c && c <= '1';
 }
+// After every number there cant be a number, an identifier or a string
 bool isTokenArrayValid(TokenArray tokens) {
     dchar[] parenthesesStack = [];
     for (int i = 0; i < tokens.length; i++) {
