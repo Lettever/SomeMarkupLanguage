@@ -27,7 +27,7 @@ enum TokenType {
     
     WhiteSpace,
 }
-static immutable enum TokenTypeMap = [
+static immutable TokenTypeMap = [
     '+': TokenType.Plus,
     '-': TokenType.Minus,
     '.': TokenType.Dot,
@@ -37,7 +37,7 @@ static immutable enum TokenTypeMap = [
     '{': TokenType.LeftBrace,
     '}': TokenType.RightBrace,
 ];
-static immutable enum TokenTypeMapKeyword = [
+static immutable TokenTypeMapKeyword = [
     "true": TokenType.True,
     "false": TokenType.False,
     "null": TokenType.Null
@@ -60,6 +60,8 @@ void main() {
         return;
 	}
     auto b1 = b.get();
+    writeln(isTokenArrayValid(b1));
+    readln();
 	//b1 = removeWhiteSpace(b1);
     b1.each!writeln;
 }
@@ -159,43 +161,33 @@ Nullable!string parseString(string str, uint i) {
 bool isBinaryDigit(dchar c) {
     return '0' <= c && c <= '1';
 }
-// After every number there cant be a number, an identifier or a string
+
+//After every number, string, or identifier
+//there must be either a whitespace
+//a closing bracket, a closing brace, or the end of the file
+
+bool isLiteralOrIdentifier(Token token) {
+    auto type = token.type;
+    return (
+        type == TokenType.Number ||
+        type == TokenType.String ||
+        type == TokenType.Identifier
+    );
+}
 bool isTokenArrayValid(TokenArray tokens) {
-    dchar[] parenthesesStack = [];
-    for (int i = 0; i < tokens.length; i++) {
-        auto token = tokens[i];
-        auto tokenType = token.type;
-        if (tokenType == TokenType.LeftBrace) { 
-            parenthesesStack ~= '{';
-        } else if (tokenType == TokenType.RightBrace) { 
-            if (parenthesesStack.length == 0 || parenthesesStack[$ - 1] != '{') {
-                return false;
-            }
-            parenthesesStack = parenthesesStack[0 .. $ - 1];
-        } else if (tokenType == TokenType.LeftBracket) {
-            parenthesesStack ~= '[';
-        } else if (tokenType == TokenType.RightBracket) {
-            if (parenthesesStack.length == 0 || parenthesesStack[$ - 1] != '[') {
-                writeln(TokenType.RightBracket, " ", parenthesesStack);
-                return false;
-            }
-            parenthesesStack = parenthesesStack[0 .. $ - 1];
-        } else if (tokenType == TokenType.Number) {
-            if (i + 1 < tokens.length) {
-                auto nextTokenType = tokens[i + 1].type;
-                bool nextTokenIsInvalid = (
-                    nextTokenType == TokenType.Number ||
-                    nextTokenType == TokenType.Identifier ||
-                    nextTokenType == TokenType.String
-                );
-                if (nextTokenIsInvalid) {
-                    return false;
-                }
-            }
+    for (uint i = 0; i < tokens.length - 1; i++) {
+        if (
+            tokens[i].isLiteralOrIdentifier() &&
+            tokens[i + 1].isLiteralOrIdentifier()
+        ) {
+            writeln(tokens[i], " ", tokens[i + 1]);
+
+            return false;
         }
     }
     return true;
 }
+
 TokenArray removeWhiteSpace(TokenArray tokens) {
     return tokens.filter!((x) => x.type != TokenType.WhiteSpace).array();
 }
