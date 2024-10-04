@@ -46,10 +46,23 @@ static immutable TokenTypeMapKeyword = [
 struct Token {
     TokenType type;
     string span;
+    string getSpan() {
+        if (type == TokenType.String) {
+            return span[1 .. $ - 1];
+        }
+        return span;
+    }
 }
 alias TokenArray = Token[];
 
 void main() {
+    string num = "F1";
+    writeln(num.to!(int)(16));
+    string s = `{ "language": "D", "rating": 3.5, "code": "42" }`;
+    JSONValue j = parseJSON(s);
+    
+    writeln(j);
+
     string test = `a = 11 b= 123 c="abc" d.e-f."g.h"=true truef false null
     nullfalse[false{null true}]"abc" 0x10 0o1 8 0o17 0b10101 10.2 0.10 0 "abc"`;
     writeln(test);
@@ -60,10 +73,13 @@ void main() {
         return;
 	}
     auto b1 = b.get();
-    writeln(isTokenArrayValid(b1));
-    readln();
+    writeln(toJson([]));
+    writeln(toJson([Token(TokenType.Dot, "a")]));
+
+    //writeln(isTokenArrayValid(b1));
+    //readln();
 	//b1 = removeWhiteSpace(b1);
-    b1.each!writeln;
+    //b1.each!writeln;
 }
 Nullable!TokenArray lex(string str) {
     uint i = 0;
@@ -196,8 +212,110 @@ bool isTokenArrayValid(TokenArray tokens) {
 TokenArray removeWhiteSpace(TokenArray tokens) {
     return tokens.filter!((x) => x.type != TokenType.WhiteSpace).array();
 }
-JSONValue toJson(TokenArray tokens) {
-    return JSONValue(10);
+Nullable!JSONValue toJson(TokenArray tokens) {
+    uint i = 0;
+    bool matches(TokenType[] types) {
+        auto token = tokens[i];
+        foreach(type; types) {
+            if (token.type == type) {
+                i += 1;
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /*
+        start = value
+    */
+    JSONValue parseNumber() {
+        // number = "[-+]"? numberLiteral
+        int sign = 1;
+        if (matches([TokenType.Minus])) {
+            sign = -1;
+        } else if (matches([TokenType.Plus])) {
+            // intentionally left empty
+        }
+        auto number = tokens[i].span;
+        if (number.length < 2) {
+            return JSONValue(sign * number.to!(int));
+        }
+        switch (number[1].toLower()) {
+        case 'x': return JSONValue(sign * number[2 .. $].to!(int)(16));
+        case 'o': return JSONValue(sign * number[2 .. $].to!(int)(8));
+        case 'b': return JSONValue(sign * number[2 .. $].to!(int)(2));
+        default:
+            if (number.canFind('.')) {
+                return JSONValue(sign * number.to!(double));
+            }
+            return JSONValue(sign * number.to!(int));
+        }
+    }
+    Nullable!JSONValue parseValue() {
+        // value = number | string | dict | array
+        auto token = tokens[i];
+        if (matches([TokenType.Minus, TokenType.Plus, TokenType.Number])) {
+            return nullable(parseNumber());
+        }
+        if (matches([TokenType.String])) {
+            return nullable(JSONValue(token.getSpan()));
+        }
+        if (matches([TokenType.LeftBrace])) {
+            auto dict = parseDict();
+            if (dict.isNull()) {
+                return Nullable!JSONValue.init;
+            }
+            return nullable(dict.get());
+        }
+        if (matches([TokenType.LeftBracket])) {
+            auto arr = parseArray();
+            if (arr.isNull()) {
+                return Nullable!JSONValue.init;
+            }
+            return nullable(arr.get());
+        }
+        writeln("idk what (", token, ") is");
+        return Nullable!JSONValue.init;
+    }
+    Nullable!JSONValue parseKey() {
+        // key = (string | identifier) ('.' (string | identifier))*
+        string key = "";
+        if (!matches([TokenType.String, TokenType.Identifier])) {
+            return Nullable!JSONValue.init;
+        }
+        key ~= tokens[i - 1].getSpan();
+        while (matches([TokenType.Dot])) {
+            key ~= '.';
+            if (!matches([TokenType.String, TokenType.Identifier])) {
+                return Nullable!JSONValue.init;
+            }
+            key ~= tokens[i - 1].getSpan();
+        }
+        return nullable(JSONValue(key));
+    }
+    Nullable!JSONValue parseDict() {
+        // "{" ((key "=")+ value)* "}"
+        JSONValue dict;
+        if (!matches([TokenType.RightBrace])) {
+            return Nullable!JSONValue.init;
+        }
+        return nullable(JSONValue(2));
+    }
+    Nullable!JSONValue parseArray() {
+        // "[" value* "]"
+        
+
+        if (!matches([TokenType.RightBracket])) {
+            return Nullable!JSONValue.init;
+        }
+        return nullable(JSONValue(1));
+    }
+
+
+    if (tokens.length == 0) {
+        return nullable(JSONValue());
+    }
+    return nullable(JSONValue(6));
 }
 uint advanceWhile(string str, uint i, bool function (dchar) fp) {
 	ulong len = str.length;

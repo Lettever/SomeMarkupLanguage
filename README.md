@@ -2,8 +2,7 @@ A markup language that i am creating for fun
 
 ===
 
-
-start = WhiteSpace | value
+start = value
 
 value = number | string | "{" ((key "=")+ value)* "}" | "[" value* "]"
 
