@@ -56,25 +56,15 @@ struct Token {
 alias TokenArray = Token[];
 
 void main() {
-    string num = "F1";
-    writeln(num.to!(int)(16));
-    string s = `{ "language": "D", "rating": 3.5, "code": "42" }`;
-    JSONValue j = parseJSON(s);
-    
-    writeln(j);
-
-    string test = `a = 11 b= 123 c="abc" d.e-f."g.h"=true truef false null
-    nullfalse[false{null true}]"abc" 0x10 0o1 8 0o17 0b10101 10.2 0.10 0 "abc"`;
-    writeln(test);
-    
+    string test = `{a."b" = 10}`;
     Nullable!TokenArray b = lex(test);
 	if (b.isNull()) {
         writeln("lexing failed");
         return;
 	}
-    auto b1 = b.get();
-    writeln(toJson([]));
-    writeln(toJson([Token(TokenType.Dot, "a")]));
+    auto b1 = b.get().removeWhiteSpace();
+    writeln(b1);
+    writeln(Foo.toJson(b1));
 
     //writeln(isTokenArrayValid(b1));
     //readln();
@@ -212,9 +202,25 @@ bool isTokenArrayValid(TokenArray tokens) {
 TokenArray removeWhiteSpace(TokenArray tokens) {
     return tokens.filter!((x) => x.type != TokenType.WhiteSpace).array();
 }
-Nullable!JSONValue toJson(TokenArray tokens) {
-    uint i = 0;
-    bool matches(TokenType[] types) {
+
+uint advanceWhile(string str, uint i, bool function (dchar) fp) {
+	ulong len = str.length;
+	while(i < len && fp(str[i])) {
+        i += 1;
+	}
+	return i;
+}
+
+dchar getC(string str, uint i, dchar ch) {
+    if (i >= str.length) {
+        return ch;
+    }
+    return str[i];
+}
+struct Foo {
+    TokenArray tokens;
+    uint i;
+    private bool matches(TokenType[] types) {
         auto token = tokens[i];
         foreach(type; types) {
             if (token.type == type) {
@@ -224,11 +230,8 @@ Nullable!JSONValue toJson(TokenArray tokens) {
         }
         return false;
     }
-    
-    /*
-        start = value
-    */
-    JSONValue parseNumber() {
+    private JSONValue parseNumber() {
+        writeln("parsing number at ", i);
         // number = "[-+]"? numberLiteral
         int sign = 1;
         if (matches([TokenType.Minus])) {
@@ -236,7 +239,8 @@ Nullable!JSONValue toJson(TokenArray tokens) {
         } else if (matches([TokenType.Plus])) {
             // intentionally left empty
         }
-        auto number = tokens[i].span;
+        auto number = tokens[i].getSpan();
+        i += 1;
         if (number.length < 2) {
             return JSONValue(sign * number.to!(int));
         }
@@ -251,10 +255,12 @@ Nullable!JSONValue toJson(TokenArray tokens) {
             return JSONValue(sign * number.to!(int));
         }
     }
-    Nullable!JSONValue parseValue() {
+    private Nullable!JSONValue parseValue() {
+        writeln("parsing value at ", i);
         // value = number | string | dict | array
         auto token = tokens[i];
         if (matches([TokenType.Minus, TokenType.Plus, TokenType.Number])) {
+            i -= 1;
             return nullable(parseNumber());
         }
         if (matches([TokenType.String])) {
@@ -277,10 +283,13 @@ Nullable!JSONValue toJson(TokenArray tokens) {
         writeln("idk what (", token, ") is");
         return Nullable!JSONValue.init;
     }
-    Nullable!JSONValue parseKey() {
+    private Nullable!JSONValue parseKey() {
         // key = (string | identifier) ('.' (string | identifier))*
+        writeln("parsing key at ", i);
+
         string key = "";
         if (!matches([TokenType.String, TokenType.Identifier])) {
+            writeln("not a string or ident");
             return Nullable!JSONValue.init;
         }
         key ~= tokens[i - 1].getSpan();
@@ -293,41 +302,63 @@ Nullable!JSONValue toJson(TokenArray tokens) {
         }
         return nullable(JSONValue(key));
     }
-    Nullable!JSONValue parseDict() {
-        // "{" ((key "=")+ value)* "}"
-        JSONValue dict;
+    private Nullable!JSONValue parseDict() {
+        writeln("parsing dict at ", i);
+        // "{" (key "=" value)* "}"
+        auto dict = JSONValue((JSONValue[string]).init);
+        
+        while (i < tokens.length && !matches([TokenType.RightBrace])) {
+            auto key = parseKey();
+            if (key.isNull()) {
+                writeln("key is null");
+                return Nullable!JSONValue.init;
+            }
+            writeln(key.get());
+            if (!matches([TokenType.Equals])) {
+                writeln("missing equals");
+                writeln(i);
+                return Nullable!JSONValue.init;
+            }
+            auto val = parseValue();
+            if (val.isNull()) {
+                writeln("val is null");
+                return Nullable!JSONValue.init;
+            }
+            writeln(val.get());
+            dict[key.get().str()] = val.get();
+        }
+
+        i -= 1;
         if (!matches([TokenType.RightBrace])) {
             return Nullable!JSONValue.init;
         }
-        return nullable(JSONValue(2));
-    }
-    Nullable!JSONValue parseArray() {
-        // "[" value* "]"
-        
 
+        return nullable(dict);
+    }
+    private Nullable!JSONValue parseArray() {
+        writeln("parsing array at ", i);
+        // "[" value* "]"
+        auto arr = JSONValue(JSONValue[].init);
+
+        while (i < tokens.length && !matches([TokenType.RightBracket])) {
+            auto val = parseValue();
+            if (val.isNull()) {
+                return Nullable!JSONValue.init;
+            }
+            arr ~= val.get();
+        }
+        i -= 1;
         if (!matches([TokenType.RightBracket])) {
             return Nullable!JSONValue.init;
         }
-        return nullable(JSONValue(1));
+        return nullable(arr);
     }
-
-
-    if (tokens.length == 0) {
-        return nullable(JSONValue());
+    
+    static Nullable!JSONValue toJson(TokenArray tokens) {
+        auto foo = Foo(tokens, 0);
+        if (tokens.length == 0) {
+            return nullable(JSONValue());
+        }
+        return foo.parseValue();
     }
-    return nullable(JSONValue(6));
-}
-uint advanceWhile(string str, uint i, bool function (dchar) fp) {
-	ulong len = str.length;
-	while(i < len && fp(str[i])) {
-        i += 1;
-	}
-	return i;
-}
-
-dchar getC(string str, uint i, dchar ch) {
-    if (i >= str.length) {
-        return ch;
-    }
-    return str[i];
 }
