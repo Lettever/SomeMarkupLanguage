@@ -5,6 +5,7 @@ import std.ascii;
 import std.typecons;
 import std.array;
 import std.json;
+import std.file;
 
 enum TokenType {
     Plus,
@@ -56,7 +57,8 @@ struct Token {
 alias TokenArray = Token[];
 
 void main() {
-    string test = `{a."b" = 10}`;
+    string filePath = "./test.lml";
+    string test = readText(filePath);
     Nullable!TokenArray b = lex(test);
 	if (b.isNull()) {
         writeln("lexing failed");
@@ -259,6 +261,15 @@ struct Foo {
         writeln("parsing value at ", i);
         // value = number | string | dict | array
         auto token = tokens[i];
+        if (matches([TokenType.True])) {
+            return nullable(JSONValue(true));
+        }
+        if (matches([TokenType.False])) {
+            return nullable(JSONValue(false));
+        }
+        if (matches([TokenType.Null])) {
+            return nullable(JSONValue(null));
+        }
         if (matches([TokenType.Minus, TokenType.Plus, TokenType.Number])) {
             i -= 1;
             return nullable(parseNumber());
@@ -324,7 +335,6 @@ struct Foo {
                 writeln("val is null");
                 return Nullable!JSONValue.init;
             }
-            writeln(val.get());
             dict[key.get().str()] = val.get();
         }
 
@@ -338,14 +348,15 @@ struct Foo {
     private Nullable!JSONValue parseArray() {
         writeln("parsing array at ", i);
         // "[" value* "]"
-        auto arr = JSONValue(JSONValue[].init);
+        JSONValue arr = JSONValue(JSONValue[].init);
+        //arr.array = [];
 
         while (i < tokens.length && !matches([TokenType.RightBracket])) {
             auto val = parseValue();
             if (val.isNull()) {
                 return Nullable!JSONValue.init;
             }
-            arr ~= val.get();
+            arr.array() ~= val.get();
         }
         i -= 1;
         if (!matches([TokenType.RightBracket])) {
