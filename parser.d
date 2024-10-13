@@ -12,20 +12,20 @@ enum TokenType {
     Minus,
     Dot,
     Equals,
-    
+
     True,
     False,
     Null,
-    
+
     String,
     Number,
     Identifier,
-    
+
     LeftBrace,
     RightBrace,
     LeftBracket,
     RightBracket,
-    
+
     WhiteSpace,
 }
 static immutable TokenTypeMap = [
@@ -57,7 +57,7 @@ struct Token {
 alias TokenArray = Token[];
 
 void main() {
-    string filePath = "./test.lml";
+    string filePath = "./Examples/simpleValue.lml";
     string test = readText(filePath);
     Nullable!TokenArray b = lex(test);
 	if (b.isNull()) {
@@ -81,7 +81,7 @@ Nullable!TokenArray lex(string str) {
         tokens ~= Token(type, span);
         i += span.length;
     }
-    
+
     while (i < len) {
         char ch = str[i];
         if (ch in TokenTypeMap) {
@@ -150,7 +150,7 @@ Nullable!string parseNumber(string str, uint i) {
             return Nullable!string.init;
         }
     }
-    
+
     uint j = advanceWhile(str, i + 1, &isDigit);
     if (str.getC(j, '\0') != '.') {
         return nullable(str[i .. j]);
@@ -165,7 +165,7 @@ Nullable!string parseNumber(string str, uint i) {
 Nullable!string parseString(string str, uint i) {
     uint j = advanceWhile(str, i + 1, (x) => x != '"') + 1;
     ulong len = str.length;
-    
+
     if (j > len) {
         //writeln(j, " ", len, " out of bounds");
         return Nullable!string.init;
@@ -317,7 +317,7 @@ struct Foo {
         writeln("parsing dict at ", i);
         // "{" (key "=" value)* "}"
         auto dict = JSONValue((JSONValue[string]).init);
-        
+
         while (i < tokens.length && !matches([TokenType.RightBrace])) {
             auto key = parseKey();
             if (key.isNull()) {
@@ -364,7 +364,7 @@ struct Foo {
         }
         return nullable(arr);
     }
-    
+
     static Nullable!JSONValue toJson(TokenArray tokens) {
         auto foo = Foo(tokens, 0);
         if (tokens.length == 0) {
