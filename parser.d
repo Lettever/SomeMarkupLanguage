@@ -59,119 +59,127 @@ alias TokenArray = Token[];
 void main() {
     string filePath = "./test.lml";
     string test = readText(filePath);
-    Nullable!TokenArray b = lex(test);
-	if (b.isNull()) {
+    Nullable!TokenArray tokens = Lexer.lex(test);
+	if (tokens.isNull()) {
         writeln("lexing failed");
         return;
 	}
-    auto b1 = b.get().removeWhiteSpace();
-    writeln(b1);
-    writeln(Foo.toJson(b1));
-
-    //writeln(isTokenArrayValid(b1));
-    //readln();
-	//b1 = removeWhiteSpace(b1);
-    //b1.each!writeln;
+    writeln(test);
+    Parser.toJson(tokens.get().removeWhiteSpace(), false).writeln();
 }
-Nullable!TokenArray lex(string str) {
-    uint i = 0;
-	ulong len = str.length;
-	Token[] tokens = [];
-    void addTokenAndAdvance(TokenType type, string span) {
-        tokens ~= Token(type, span);
-        i += span.length;
+struct Lexer {
+    string str;
+    uint i;
+    static Nullable!TokenArray lex(string str) {
+        auto foo = Lexer(str, 0);
+        return foo.impl();
     }
-    
-    while (i < len) {
-        char ch = str[i];
-        if (ch in TokenTypeMap) {
-            addTokenAndAdvance(TokenTypeMap[ch], ch.to!(string));
-        } else if (ch.isAlpha()) {
-            string parsedIdentifier = parseIdentifier(str, i);
-            addTokenAndAdvance(TokenTypeMapKeyword.get(parsedIdentifier, TokenType.Identifier), parsedIdentifier);
-        } else if (ch.isDigit()) {
-            Nullable!string parsedNumber = parseNumber(str, i);
-            if (parsedNumber.isNull()) {
-                return Nullable!TokenArray.init;
-            }
-            addTokenAndAdvance(TokenType.Number, parsedNumber.get());
-        } else if (ch == '"') {
-            Nullable!string parsedString = parseString(str, i);
-            if (parsedString.isNull()) {
-                return Nullable!TokenArray.init;
-            }
-            addTokenAndAdvance(TokenType.String, parsedString.get());
-        } else if (ch.isWhite()) {
-            if (tokens.length > 0 && tokens[$ - 1].type != TokenType.WhiteSpace) {
-                addTokenAndAdvance(TokenType.WhiteSpace, "");
-            }
-            i += 1;
-        } else {
-            writefln("i: %s, ch: %s", i, ch);
-            i += 1;
+    private Nullable!TokenArray impl() {
+        ulong len = str.length;
+        Token[] tokens = [];
+        void addTokenAndAdvance(TokenType type, string span) {
+            tokens ~= Token(type, span);
+            i += span.length;
         }
+        
+        while (i < len) {
+            char ch = str[i];
+            if (ch in TokenTypeMap) {
+                addTokenAndAdvance(TokenTypeMap[ch], ch.to!(string));
+            } else if (ch.isAlpha()) {
+                string parsedIdentifier = parseIdentifier();
+                addTokenAndAdvance(TokenTypeMapKeyword.get(parsedIdentifier, TokenType.Identifier), parsedIdentifier);
+            } else if (ch.isDigit()) {
+                Nullable!string parsedNumber = parseNumber();
+                if (parsedNumber.isNull()) {
+                    return Nullable!TokenArray.init;
+                }
+                addTokenAndAdvance(TokenType.Number, parsedNumber.get());
+            } else if (ch == '"') {
+                Nullable!string parsedString = parseString();
+                if (parsedString.isNull()) {
+                    return Nullable!TokenArray.init;
+                }
+                addTokenAndAdvance(TokenType.String, parsedString.get());
+            } else if (ch == '\'') {
+                Nullable!string parsedString = parseString2();
+                if (parsedString.isNull()) {
+                    return Nullable!TokenArray.init;
+                }
+                addTokenAndAdvance(TokenType.String, parsedString.get());
+            } else if (ch.isWhite()) {
+                if (tokens.length > 0 && tokens[$ - 1].type != TokenType.WhiteSpace) {
+                    addTokenAndAdvance(TokenType.WhiteSpace, "");
+                }
+                i += 1;
+            } else {
+                writefln("i: %s, ch: %s", i, ch);
+                i += 1;
+            }
+        }
+        return nullable(tokens);
     }
-    return nullable(tokens);
-}
-bool matchesAtIndex(string haystack, string needle, uint i) {
-    if (i + needle.length > haystack.length) {
-        return false;
+    private string parseIdentifier() {
+        uint j = advanceWhile(str, i + 1, (x) => isAlphaNum(x) || x == '_' || x == '-');
+        return str[i .. j];
     }
-    return needle == haystack[i .. i + needle.length];
-}
-string parseIdentifier(string str, uint i) {
-    uint j = advanceWhile(str, i + 1, (x) => isAlphaNum(x) || x == '_' || x == '-');
-    return str[i .. j];
-}
-// str[i] == 0 && str[i + 1] != '.' -> parse special
-// str[i] != 0 || str[i + 1] == '.' -> parse decimal
-
-Nullable!string parseNumber(string str, uint i) {
-    ulong len = str.length;
-    if (str[i] == '0' && i + 1 < len && str[i + 1] != '.') {
-        switch (str[i + 1].toLower()) {
-        case 'x':
-            uint j = advanceWhile(str, i + 2, &isHexDigit);
-            return nullable(str[i .. j]);
-        break;
-        case 'o':
-            uint j = advanceWhile(str, i + 2, &isOctalDigit);
-            return nullable(str[i .. j]);
-        break;
-        case 'b':
-            uint j = advanceWhile(str, i + 2, &isBinaryDigit);
-            return nullable(str[i .. j]);
-        break;
-        case ' ':
-            return nullable("0");
+    // str[i] == 0 && str[i + 1] != '.' -> parse special
+    // str[i] != 0 || str[i + 1] == '.' -> parse decimal
+    private Nullable!string parseNumber() {
+        ulong len = str.length;
+        if (str[i] == '0' && i + 1 < len && str[i + 1] != '.') {
+            switch (str[i + 1].toLower()) {
+            case 'x':
+                uint j = advanceWhile(str, i + 2, &isHexDigit);
+                return nullable(str[i .. j]);
             break;
-        default:
-            //writeln("not valid special number", i);
+            case 'o':
+                uint j = advanceWhile(str, i + 2, &isOctalDigit);
+                return nullable(str[i .. j]);
+            break;
+            case 'b':
+                uint j = advanceWhile(str, i + 2, &isBinaryDigit);
+                return nullable(str[i .. j]);
+            break;
+            case ' ':
+                return nullable("0");
+                break;
+            default:
+                //writeln("not valid special number", i);
+                return Nullable!string.init;
+            }
+        }
+        
+        uint j = advanceWhile(str, i + 1, &isDigit);
+        if (str.getC(j, '\0') != '.') {
+            return nullable(str[i .. j]);
+        }
+        if (!str.getC(j + 1, '\0').isDigit()) {
             return Nullable!string.init;
         }
-    }
-    
-    uint j = advanceWhile(str, i + 1, &isDigit);
-    if (str.getC(j, '\0') != '.') {
+        j = advanceWhile(str, j + 1, &isDigit);
         return nullable(str[i .. j]);
     }
-    if (!str.getC(j + 1, '\0').isDigit()) {
-        return Nullable!string.init;
+    private Nullable!string parseString() {
+        uint j = advanceWhile(str, i + 1, (x) => x != '"') + 1;
+        ulong len = str.length;
+        
+        if (j > len) {
+            return Nullable!string.init;
+        }
+        return nullable(str[i .. j]);
     }
-    j = advanceWhile(str, j + 1, &isDigit);
-    return nullable(str[i .. j]);
+    private Nullable!string parseString2() {
+        uint j = advanceWhile(str, i + 1, (x) => x != '\'') + 1;
+        ulong len = str.length;
+        
+        if (j > len) {
+            return Nullable!string.init;
+        }
+        return nullable(str[i .. j]);
+    }
 }
 
-Nullable!string parseString(string str, uint i) {
-    uint j = advanceWhile(str, i + 1, (x) => x != '"') + 1;
-    ulong len = str.length;
-    
-    if (j > len) {
-        //writeln(j, " ", len, " out of bounds");
-        return Nullable!string.init;
-    }
-    return nullable(str[i .. j]);
-}
 bool isBinaryDigit(dchar c) {
     return '0' <= c && c <= '1';
 }
@@ -219,9 +227,10 @@ dchar getC(string str, uint i, dchar ch) {
     }
     return str[i];
 }
-struct Foo {
+struct Parser {
     TokenArray tokens;
     uint i;
+    bool info;
     private bool matches(TokenType[] types) {
         auto token = tokens[i];
         foreach(type; types) {
@@ -233,7 +242,7 @@ struct Foo {
         return false;
     }
     private JSONValue parseNumber() {
-        writeln("parsing number at ", i);
+        if (info) { writeln("parsing number at ", i); }
         // number = "[-+]"? numberLiteral
         int sign = 1;
         if (matches([TokenType.Minus])) {
@@ -258,7 +267,7 @@ struct Foo {
         }
     }
     private Nullable!JSONValue parseValue() {
-        writeln("parsing value at ", i);
+        if(info) { writeln("parsing value at ", i); }
         // value = number | string | dict | array
         auto token = tokens[i];
         if (matches([TokenType.True])) {
@@ -294,27 +303,35 @@ struct Foo {
         writeln("idk what (", token, ") is");
         return Nullable!JSONValue.init;
     }
-    private Nullable!JSONValue parseKey() {
-        // key = (string | identifier) ('.' (string | identifier))*
-        writeln("parsing key at ", i);
-
+    private Nullable!(string[]) parseKey() {
+        // key = (string | identifier) ('.'? (string | identifier))*
+        if (info) { writeln("parsing key at ", i); }
         string key = "";
+        string[] res = [];
         if (!matches([TokenType.String, TokenType.Identifier])) {
             writeln("not a string or ident");
-            return Nullable!JSONValue.init;
+            return Nullable!(string[]).init;
         }
         key ~= tokens[i - 1].getSpan();
-        while (matches([TokenType.Dot])) {
-            key ~= '.';
-            if (!matches([TokenType.String, TokenType.Identifier])) {
-                return Nullable!JSONValue.init;
+        while (matches([TokenType.Dot, TokenType.String, TokenType.Identifier])) {
+            if (tokens[i - 1].type == TokenType.Dot) {
+                res ~= key;
+                key = "";
+            } else {
+                key ~= tokens[i - 1].getSpan();
             }
-            key ~= tokens[i - 1].getSpan();
         }
-        return nullable(JSONValue(key));
+        if (key.length != 0) {
+            res ~= key;
+        }
+        // if the last token is a dot, it means the last key does not exist
+        if (tokens[i - 1].type == TokenType.Dot) {
+            return Nullable!(string[]).init;
+        } 
+        return nullable(res);
     }
     private Nullable!JSONValue parseDict() {
-        writeln("parsing dict at ", i);
+        if (info) { writeln("parsing dict at ", i); }
         // "{" (key "=" value)* "}"
         auto dict = JSONValue((JSONValue[string]).init);
         
@@ -324,7 +341,6 @@ struct Foo {
                 writeln("key is null");
                 return Nullable!JSONValue.init;
             }
-            writeln(key.get());
             if (!matches([TokenType.Equals])) {
                 writeln("missing equals");
                 writeln(i);
@@ -335,7 +351,8 @@ struct Foo {
                 writeln("val is null");
                 return Nullable!JSONValue.init;
             }
-            dict[key.get().str()] = val.get();
+            auto keys = key.get();
+            dict[keys.join(".")] = val.get();
         }
 
         i -= 1;
@@ -346,7 +363,7 @@ struct Foo {
         return nullable(dict);
     }
     private Nullable!JSONValue parseArray() {
-        writeln("parsing array at ", i);
+        if (info) { writeln("parsing array at ", i); }
         // "[" value* "]"
         JSONValue arr = JSONValue(JSONValue[].init);
         //arr.array = [];
@@ -365,8 +382,8 @@ struct Foo {
         return nullable(arr);
     }
     
-    static Nullable!JSONValue toJson(TokenArray tokens) {
-        auto foo = Foo(tokens, 0);
+    static Nullable!JSONValue toJson(TokenArray tokens, bool info = false) {
+        auto foo = Parser(tokens, 0, info);
         if (tokens.length == 0) {
             return nullable(JSONValue());
         }
