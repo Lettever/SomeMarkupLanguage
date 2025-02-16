@@ -8,7 +8,6 @@ import std.json;
 import std.file;
 
 enum TokenType {
-    Plus,
     Minus,
     Dot,
     Equals,
@@ -25,9 +24,11 @@ enum TokenType {
     RightBrace,
     LeftBracket,
     RightBracket,
+    
+    WhiteSpace,
+    EOF,
 }
 static immutable TokenTypeMap = [
-    '+': TokenType.Plus,
     '-': TokenType.Minus,
     '.': TokenType.Dot,
     '=': TokenType.Equals,
@@ -55,14 +56,14 @@ struct Token {
 alias TokenArray = Token[];
 
 void main() {
-    string filePath = "./Examples/simpleValue.lml";
+    string filePath = "./Examples/keys.lml";
     string test = readText(filePath);
     Nullable!TokenArray tokens = Lexer.lex(test);
 	if (tokens.isNull()) {
         writeln("lexing failed");
         return;
 	}
-    Nullable!JSONValue parsed = Parser.toJson(tokens.get(), false);
+    Nullable!JSONValue parsed = Parser.toJson(tokens.get().removeWhiteSpace(), false);
     if (parsed.isNull()) {
         writeln("Parsing failed");
         return;
@@ -70,6 +71,14 @@ void main() {
     writeln(parsed.get().toPrettyString());
 }
 
+TokenArray removeWhiteSpace(TokenArray tokens) => tokens.filter!((x) => x.type != TokenType.WhiteSpace).array();
+
+bool canAppend(TokenArray tokens, TokenType type) {
+    if (tokens.length == 0) return true;
+    if (type != TokenType.WhiteSpace) return true;
+    return tokens[$ - 1].type != TokenType.WhiteSpace;
+}
+    
 struct Lexer {
     string str;
     uint i;
@@ -77,50 +86,68 @@ struct Lexer {
         auto foo = Lexer(str, 0);
         return foo.impl();
     }
-    private Nullable!TokenArray impl() {
-        ulong len = str.length;
-        Token[] tokens = [];
-        void addTokenAndAdvance(TokenType type, string span) {
-            tokens ~= Token(type, span);
-            i += span.length;
+    private Nullable!Token makeAndAdvance(TokenType type, string span) {
+        i += span.length;
+        return nullable(Token(type, span));
+    }
+    private Nullable!Token next() {
+        if (i >= str.length) return nullable(Token(TokenType.EOF, ""));
+        char ch = str[i];
+        if (ch in TokenTypeMap) {
+            return makeAndAdvance(TokenTypeMap[ch], ch.to!(string));
         }
-        while (i < len) {
-            char ch = str[i];
-            if (ch in TokenTypeMap) {
-                addTokenAndAdvance(TokenTypeMap[ch], ch.to!(string));
-            } else if (ch.isAlpha()) {
-                string parsedIdentifier = parseIdentifier();
-                addTokenAndAdvance(TokenTypeMapKeyword.get(parsedIdentifier, TokenType.Identifier), parsedIdentifier);
-            } else if (ch.isDigit()) {
-                Nullable!string parsedNumber = parseNumber();
-                if (parsedNumber.isNull()) {
-                    writeln("Invalid number at ", this.i);
-                    return Nullable!TokenArray.init;
-                }
-                addTokenAndAdvance(TokenType.Number, parsedNumber.get());
-            } else if (ch == '"') {
-                Nullable!string parsedString = parseString();
-                if (parsedString.isNull()) {
-                    writeln("Invalid string at ", this.i);
-                    return Nullable!TokenArray.init;
-                }
-                addTokenAndAdvance(TokenType.String, parsedString.get());
-            } else if (ch == '\'') {
-                Nullable!string parsedString = parseString2();
-                if (parsedString.isNull()) {
-                    writeln("Invalid string at ", this.i);
-                    return Nullable!TokenArray.init;
-                }
-                addTokenAndAdvance(TokenType.String, parsedString.get());
-            } else if (ch.isWhite()) {
-                i += 1;
-            } else {
-                writefln("i: %s, ch: %s", i, ch);
-                i += 1;
+        if (ch.isAlpha()) {
+            string parsedIdentifier = parseIdentifier();
+            auto type = TokenTypeMapKeyword.get(parsedIdentifier, TokenType.Identifier);
+            return makeAndAdvance(type, parsedIdentifier);
+        }
+        if (ch.isDigit()) {
+            Nullable!string parsedNumber = parseNumber();
+            if (parsedNumber.isNull()) {
+                writeln("Invalid number at ", this.i);
+                return Nullable!Token.init;            
             }
+            return makeAndAdvance(TokenType.Number, parsedNumber.get());
+        }
+        if (ch == '"') {
+            Nullable!string parsedString = parseString();
+            if (parsedString.isNull()) {
+                writeln("Invalid string at ", this.i);
+                return Nullable!Token.init;
+            }
+            return makeAndAdvance(TokenType.String, parsedString.get());
+        }
+        if (ch == '\'') {
+            Nullable!string parsedString = parseString2();
+            if (parsedString.isNull()) {
+                writeln("Invalid string at ", this.i);
+                return Nullable!Token.init;
+            }
+            return makeAndAdvance(TokenType.String, parsedString.get());
+        }
+        if (ch.isWhite()) {
+            return makeAndAdvance(TokenType.WhiteSpace, " ");
+        }
+        writefln("i: %s, ch: %s", i, ch);
+        i += 1;
+        return next();
+    }
+    
+    private Nullable!TokenArray impl() {
+        TokenArray tokens = [];
+        while (true) {
+            auto token = next();
+            if (token.isNull()) {
+                writeln("Lexing failed");
+                return Nullable!TokenArray.init;
+            }
+            if (token.get().type == TokenType.EOF) break;
+            if (!canAppend(tokens, token.get().type)) continue;
+            tokens ~= token.get();
         }
         return nullable(tokens);
     }
+    
     private string parseIdentifier() {
         uint j = advanceWhile(str, i + 1, (x) => isAlphaNum(x) || x == '_' || x == '-');
         return str[i .. j];
@@ -218,8 +245,6 @@ struct Parser {
         int sign = 1;
         if (matches([TokenType.Minus])) {
             sign = -1;
-        } else if (matches([TokenType.Plus])) {
-            // intentionally left empty
         }
         auto number = tokens[i].getSpan();
         i += 1;
@@ -250,7 +275,7 @@ struct Parser {
         if (matches([TokenType.Null])) {
             return nullable(JSONValue(null));
         }
-        if (matches([TokenType.Minus, TokenType.Plus, TokenType.Number])) {
+        if (matches([TokenType.Minus, TokenType.Number])) {
             i -= 1;
             return nullable(parseNumber());
         }
