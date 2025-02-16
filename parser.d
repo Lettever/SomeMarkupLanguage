@@ -65,8 +65,14 @@ void main() {
         return;
 	}
     writeln(test);
-    Parser.toJson(tokens.get().removeWhiteSpace(), false).writeln();
+    Nullable!(JSONValue) parsed = Parser.toJson(tokens.get().removeWhiteSpace(), false);
+    if (parsed.isNull()) {
+        writeln("Parsing failed");
+        return;
+    }
+    writeln(parsed.get().toPrettyString());
 }
+
 struct Lexer {
     string str;
     uint i;
@@ -81,7 +87,6 @@ struct Lexer {
             tokens ~= Token(type, span);
             i += span.length;
         }
-        
         while (i < len) {
             char ch = str[i];
             if (ch in TokenTypeMap) {
@@ -92,18 +97,21 @@ struct Lexer {
             } else if (ch.isDigit()) {
                 Nullable!string parsedNumber = parseNumber();
                 if (parsedNumber.isNull()) {
+                    writeln("Invalid number at ", this.i);
                     return Nullable!TokenArray.init;
                 }
                 addTokenAndAdvance(TokenType.Number, parsedNumber.get());
             } else if (ch == '"') {
                 Nullable!string parsedString = parseString();
                 if (parsedString.isNull()) {
+                    writeln("Invalid string at ", this.i);
                     return Nullable!TokenArray.init;
                 }
                 addTokenAndAdvance(TokenType.String, parsedString.get());
             } else if (ch == '\'') {
                 Nullable!string parsedString = parseString2();
                 if (parsedString.isNull()) {
+                    writeln("Invalid string at ", this.i);
                     return Nullable!TokenArray.init;
                 }
                 addTokenAndAdvance(TokenType.String, parsedString.get());
@@ -127,7 +135,7 @@ struct Lexer {
     // str[i] != 0 || str[i + 1] == '.' -> parse decimal
     private Nullable!string parseNumber() {
         ulong len = str.length;
-        if (str[i] == '0' && i + 1 < len && str[i + 1] != '.') {
+        if (str[i] == '0' && str.getC(i + 1, '\0') != '.') {
             switch (str[i + 1].toLower()) {
             case 'x':
                 uint j = advanceWhile(str, i + 2, &isHexDigit);
@@ -145,7 +153,6 @@ struct Lexer {
                 return nullable("0");
                 break;
             default:
-                //writeln("not valid special number", i);
                 return Nullable!string.init;
             }
         }
@@ -215,9 +222,7 @@ TokenArray removeWhiteSpace(TokenArray tokens) {
 
 uint advanceWhile(string str, uint i, bool function (dchar) fp) {
 	ulong len = str.length;
-	while(i < len && fp(str[i])) {
-        i += 1;
-	}
+	while (i < len && fp(str[i])) i += 1;
 	return i;
 }
 
@@ -227,6 +232,7 @@ dchar getC(string str, uint i, dchar ch) {
     }
     return str[i];
 }
+
 struct Parser {
     TokenArray tokens;
     uint i;
@@ -291,14 +297,14 @@ struct Parser {
             if (dict.isNull()) {
                 return Nullable!JSONValue.init;
             }
-            return nullable(dict.get());
+            return dict;
         }
         if (matches([TokenType.LeftBracket])) {
             auto arr = parseArray();
             if (arr.isNull()) {
                 return Nullable!JSONValue.init;
             }
-            return nullable(arr.get());
+            return arr;
         }
         writeln("idk what (", token, ") is");
         return Nullable!JSONValue.init;
@@ -352,7 +358,7 @@ struct Parser {
                 return Nullable!JSONValue.init;
             }
             auto keys = key.get();
-            dict[keys.join(".")] = val.get();
+            dict = foo(dict, keys, val.get());
         }
 
         i -= 1;
@@ -389,4 +395,15 @@ struct Parser {
         }
         return foo.parseValue();
     }
+}
+
+JSONValue foo(JSONValue json, string[] keys, JSONValue val) {
+	if (keys.length == 0) {
+		return val;
+	}
+	if (keys[0] !in json) {
+		json[keys[0]] = JSONValue.emptyObject;
+	}
+	json[keys[0]] = foo(json[keys[0]], keys[1 .. $], val);
+	return json;
 }
