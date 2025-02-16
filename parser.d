@@ -25,8 +25,6 @@ enum TokenType {
     RightBrace,
     LeftBracket,
     RightBracket,
-    
-    WhiteSpace,
 }
 static immutable TokenTypeMap = [
     '+': TokenType.Plus,
@@ -57,15 +55,14 @@ struct Token {
 alias TokenArray = Token[];
 
 void main() {
-    string filePath = "./test.lml";
+    string filePath = "./Examples/simpleValue.lml";
     string test = readText(filePath);
     Nullable!TokenArray tokens = Lexer.lex(test);
 	if (tokens.isNull()) {
         writeln("lexing failed");
         return;
 	}
-    writeln(test);
-    Nullable!(JSONValue) parsed = Parser.toJson(tokens.get().removeWhiteSpace(), false);
+    Nullable!JSONValue parsed = Parser.toJson(tokens.get(), false);
     if (parsed.isNull()) {
         writeln("Parsing failed");
         return;
@@ -116,9 +113,6 @@ struct Lexer {
                 }
                 addTokenAndAdvance(TokenType.String, parsedString.get());
             } else if (ch.isWhite()) {
-                if (tokens.length > 0 && tokens[$ - 1].type != TokenType.WhiteSpace) {
-                    addTokenAndAdvance(TokenType.WhiteSpace, "");
-                }
                 i += 1;
             } else {
                 writefln("i: %s, ch: %s", i, ch);
@@ -189,35 +183,6 @@ struct Lexer {
 
 bool isBinaryDigit(dchar c) {
     return '0' <= c && c <= '1';
-}
-
-//After every number, string, or identifier
-//there must be either a whitespace
-//a closing bracket, a closing brace, or the end of the file
-
-bool isLiteralOrIdentifier(Token token) {
-    auto type = token.type;
-    return (
-        type == TokenType.Number ||
-        type == TokenType.String ||
-        type == TokenType.Identifier
-    );
-}
-bool isTokenArrayValid(TokenArray tokens) {
-    for (uint i = 0; i < tokens.length - 1; i++) {
-        if (
-            tokens[i].isLiteralOrIdentifier() &&
-            tokens[i + 1].isLiteralOrIdentifier()
-        ) {
-            writeln(tokens[i], " ", tokens[i + 1]);
-            return false;
-        }
-    }
-    return true;
-}
-
-TokenArray removeWhiteSpace(TokenArray tokens) {
-    return tokens.filter!((x) => x.type != TokenType.WhiteSpace).array();
 }
 
 uint advanceWhile(string str, uint i, bool function (dchar) fp) {
