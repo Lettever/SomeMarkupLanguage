@@ -188,13 +188,9 @@ struct Lexer {
         }
         
         uint j = parseIntegerPart(i);
-        // ends after the integer part
         if (str.getC(j, '\0') == '.') {
-            // if there is a dot
             if (!str.getC(j + 1, '\0').isDigit()) return Nullable!string.init;
-            // if its not a number
             j = parseDecimalPart(j);
-            // ends after the decimal part
         }
         if (str.getC(j, '\0').toLower() == 'e') {
             dchar c = str.getC(j + 1, '\0');
