@@ -27,7 +27,10 @@ enum TokenType {
     
     WhiteSpace,
     EOF,
+    
+    Illegal,
 }
+
 static immutable TokenTypeMap = [
     '-': TokenType.Minus,
     '.': TokenType.Dot,
@@ -37,6 +40,7 @@ static immutable TokenTypeMap = [
     '{': TokenType.LeftBrace,
     '}': TokenType.RightBrace,
 ];
+
 static immutable TokenTypeMapKeyword = [
     "true": TokenType.True,
     "false": TokenType.False,
@@ -46,23 +50,34 @@ static immutable TokenTypeMapKeyword = [
 struct Token {
     TokenType type;
     string span;
+    int row, col;
+    
     string getSpan() {
         if (type == TokenType.String) {
             return span[1 .. $ - 1];
         }
         return span;
     }
+    
+    void print() {
+        writeln("Type = ", type);
+        writeln("Span = ", span);
+        writeln("Row = ", row);
+        writeln("Col = ", col);
+        writeln();
+    }
 }
 alias TokenArray = Token[];
 
 void main() {
-    string filePath = "./Examples/keys.lml";
+    string filePath = "./test2.lml";
     string test = readText(filePath);
     Nullable!TokenArray tokens = Lexer.lex(test);
 	if (tokens.isNull()) {
         writeln("lexing failed");
         return;
 	}
+	tokens.get().each!(x => x.print());
     Nullable!JSONValue parsed = Parser.toJson(tokens.get().removeWhiteSpace(), false);
     if (parsed.isNull()) {
         writeln("Parsing failed");
@@ -78,55 +93,67 @@ bool canAppend(TokenArray tokens, TokenType type) {
     if (type != TokenType.WhiteSpace) return true;
     return tokens[$ - 1].type != TokenType.WhiteSpace;
 }
-    
+
 struct Lexer {
     string str;
     uint i;
+    string[] errors;
+    int row = 1, col = 1;
+    
     static Nullable!TokenArray lex(string str) {
-        auto foo = Lexer(str, 0);
-        return foo.impl();
+        return Lexer(str, 0).impl();
     }
+    
     private Nullable!Token makeAndAdvance(TokenType type, string span) {
         i += span.length;
-        return nullable(Token(type, span));
+        return nullable(Token(type, span, row, col));
     }
+    
     private Nullable!Token next() {
-        if (i >= str.length) return nullable(Token(TokenType.EOF, ""));
+        if (i >= str.length) return makeAndAdvance(TokenType.EOF, "");
         char ch = str[i];
         if (ch in TokenTypeMap) {
-            return makeAndAdvance(TokenTypeMap[ch], ch.to!(string));
+            auto t = makeAndAdvance(TokenTypeMap[ch], ch.to!(string));
+            col += 1;
+            return t;
         }
         if (ch.isAlpha()) {
             string parsedIdentifier = parseIdentifier();
             auto type = TokenTypeMapKeyword.get(parsedIdentifier, TokenType.Identifier);
-            return makeAndAdvance(type, parsedIdentifier);
+            auto t = makeAndAdvance(type, parsedIdentifier);
+            col += parsedIdentifier.length;
+            return t;
         }
         if (ch.isDigit()) {
             Nullable!string parsedNumber = parseNumber();
             if (parsedNumber.isNull()) {
-                writeln("Invalid number at ", this.i);
-                return Nullable!Token.init;            
+                writeln("Invalid number at ", row, " ", col);
+                return Nullable!Token.init;
             }
-            return makeAndAdvance(TokenType.Number, parsedNumber.get());
+            auto t = makeAndAdvance(TokenType.Number, parsedNumber.get());
+            col += parsedNumber.get().length;
+            return t;
         }
-        if (ch == '"') {
-            Nullable!string parsedString = parseString();
+        if (ch == '"' || ch == '\'') {
+            int rowTemp = row, colTemp = col;
+            Nullable!string parsedString = parseString(ch, rowTemp, colTemp);
             if (parsedString.isNull()) {
                 writeln("Invalid string at ", this.i);
                 return Nullable!Token.init;
             }
-            return makeAndAdvance(TokenType.String, parsedString.get());
-        }
-        if (ch == '\'') {
-            Nullable!string parsedString = parseString2();
-            if (parsedString.isNull()) {
-                writeln("Invalid string at ", this.i);
-                return Nullable!Token.init;
-            }
-            return makeAndAdvance(TokenType.String, parsedString.get());
+            auto t = makeAndAdvance(TokenType.String, parsedString.get());
+            row = rowTemp;
+            col = colTemp;
+            return t;
         }
         if (ch.isWhite()) {
-            return makeAndAdvance(TokenType.WhiteSpace, " ");
+            auto t = makeAndAdvance(TokenType.WhiteSpace, " ");
+            col += 1;
+            if (ch == '\n') {
+                row += 1;
+                col = 1;
+            }
+            return t;
         }
         writefln("i: %s, ch: %s", i, ch);
         i += 1;
@@ -152,58 +179,79 @@ struct Lexer {
         uint j = advanceWhile(str, i + 1, (x) => isAlphaNum(x) || x == '_' || x == '-');
         return str[i .. j];
     }
-    // str[i] == 0 && str[i + 1] != '.' -> parse special
-    // str[i] != 0 || str[i + 1] == '.' -> parse decimal
+    
     private Nullable!string parseNumber() {
         ulong len = str.length;
+        
         if (str[i] == '0' && str.getC(i + 1, '\0') != '.') {
-            switch (str[i + 1].toLower()) {
-            case 'x':
-                uint j = advanceWhile(str, i + 2, &isHexDigit);
-                return nullable(str[i .. j]);
-            break;
-            case 'o':
-                uint j = advanceWhile(str, i + 2, &isOctalDigit);
-                return nullable(str[i .. j]);
-            break;
-            case 'b':
-                uint j = advanceWhile(str, i + 2, &isBinaryDigit);
-                return nullable(str[i .. j]);
-            break;
-            case ' ':
-                return nullable("0");
-                break;
-            default:
-                return Nullable!string.init;
-            }
+            return parseSpecialNumber();
         }
         
-        uint j = advanceWhile(str, i + 1, &isDigit);
-        if (str.getC(j, '\0') != '.') {
+        uint j = parseIntegerPart(i);
+        // ends after the integer part
+        if (str.getC(j, '\0') == '.') {
+            // if there is a dot
+            if (!str.getC(j + 1, '\0').isDigit()) return Nullable!string.init;
+            // if its not a number
+            j = parseDecimalPart(j);
+            // ends after the decimal part
+        }
+        if (str.getC(j, '\0').toLower() == 'e') {
+            dchar c = str.getC(j + 1, '\0');
+            if (!c.isDigit() && c != '-' && c != '+') return Nullable!string.init;
+            j = parseExponentPart(j);
+        }
+        return nullable(str[i .. j]);
+    }
+    
+    private uint parseIntegerPart(uint i) {
+        return advanceWhile(str, i + 1, &isDigit);
+    }
+    private uint parseDecimalPart(uint i) {
+        return advanceWhile(str, i + 1, &isDigit);
+    }
+    private uint parseExponentPart(uint i) {
+        if (str[i + 1] == '+' || str[i + 1] == '-') i += 1;
+        return advanceWhile(str, i + 1, &isDigit);
+    }
+    private Nullable!string parseSpecialNumber() {
+        auto m = [
+            'x': &isHexDigit,
+            'o': &isOctalDigit,
+            'b': &isBinaryDigit,
+        ];
+        if (i == str.length - 1) return nullable("0");
+        auto n = str[i + 1];
+        
+        if(n in m) {
+            uint j = advanceWhile(str, i + 2, m[n]);
+            if (i == j) return Nullable!string.init;
             return nullable(str[i .. j]);
         }
-        if (!str.getC(j + 1, '\0').isDigit()) {
-            return Nullable!string.init;
-        }
-        j = advanceWhile(str, j + 1, &isDigit);
-        return nullable(str[i .. j]);
+        return nullable("0");
     }
-    private Nullable!string parseString() {
-        uint j = advanceWhile(str, i + 1, (x) => x != '"') + 1;
+    
+    private Nullable!string parseString(char delim, ref int rowTemp, ref int colTemp) {
         ulong len = str.length;
+        uint j = i + 1;
         
-        if (j > len) {
-            return Nullable!string.init;
+        while (j < len) {
+            char ch = str[j];
+            colTemp += 1;
+            if (ch == '\n') {
+                rowTemp += 1;
+                colTemp = 1;
+            }
+            else if (ch == '\\' && j + 1 < len && str[j + 1] == delim) {
+                j += 2;
+                continue;
+            }
+            else if (ch == delim) break;
+            j += 1;
         }
-        return nullable(str[i .. j]);
-    }
-    private Nullable!string parseString2() {
-        uint j = advanceWhile(str, i + 1, (x) => x != '\'') + 1;
-        ulong len = str.length;
+        j += 1;
         
-        if (j > len) {
-            return Nullable!string.init;
-        }
+        if (j > len) return Nullable!string.init;
         return nullable(str[i .. j]);
     }
 }
@@ -229,6 +277,8 @@ struct Parser {
     TokenArray tokens;
     uint i;
     bool info;
+    string[] errors;
+    
     private bool matches(TokenType[] types) {
         auto token = tokens[i];
         foreach(type; types) {
@@ -241,7 +291,7 @@ struct Parser {
     }
     private JSONValue parseNumber() {
         if (info) { writeln("parsing number at ", i); }
-        // number = "[-+]"? numberLiteral
+        // number = -? numberLiteral
         int sign = 1;
         if (matches([TokenType.Minus])) {
             sign = -1;
@@ -256,7 +306,7 @@ struct Parser {
         case 'o': return JSONValue(sign * number[2 .. $].to!(int)(8));
         case 'b': return JSONValue(sign * number[2 .. $].to!(int)(2));
         default:
-            if (number.canFind('.')) {
+            if (number.canFind('.') || number.canFind('e') || number.canFind('E')) {
                 return JSONValue(sign * number.to!(double));
             }
             return JSONValue(sign * number.to!(int));
@@ -397,3 +447,61 @@ JSONValue foo(JSONValue json, string[] keys, JSONValue val) {
 	json[keys[0]] = foo(json[keys[0]], keys[1 .. $], val);
 	return json;
 }
+/*
+private Nullable!string parseNumber() {
+    ulong len = str.length;
+    if (i >= len) return Nullable!string.init; // Check bounds
+
+    if (str[i] == '0') {
+        if (i + 1 >= len) return nullable("0"); // Single '0'
+
+        char nextChar = str.getC(i + 1, '\0');
+        if (nextChar != '.') {
+            switch (nextChar.toLower()) {
+                case 'x': return parseNumberWithBase(i + 2, &isHexDigit);    // Hex
+                case 'o': return parseNumberWithBase(i + 2, &isOctalDigit); // Octal
+                case 'b': return parseNumberWithBase(i + 2, &isBinaryDigit); // Binary
+                case ' ': return nullable("0"); // '0 ' case
+                default: return Nullable!string.init; // Invalid format
+            }
+        }
+    }
+
+    // Parse integer part
+    uint j = advanceWhile(str, i, &isDigit);
+    if (j >= len) return nullable(str[i .. j]); // No fractional part or exponent
+
+    // Parse fractional part (if any)
+    if (str.getC(j, '\0') == '.') {
+        if (j + 1 >= len || !str.getC(j + 1, '\0').isDigit()) {
+            return Nullable!string.init; // Invalid fractional part
+        }
+        j = advanceWhile(str, j + 1, &isDigit);
+    }
+
+    // Parse exponent part (if any)
+    if (j < len && (str[j] == 'e' || str[j] == 'E')) {
+        j++; // Move past 'e' or 'E'
+
+        // Parse optional sign
+        if (j < len && (str[j] == '+' || str[j] == '-')) {
+            j++;
+        }
+
+        // Parse exponent digits
+        uint exponentStart = j;
+        j = advanceWhile(str, j, &isDigit);
+        if (j == exponentStart) {
+            return Nullable!string.init; // No digits in exponent
+        }
+    }
+
+    return nullable(str[i .. j]);
+}
+
+private Nullable!string parseNumberWithBase(uint startIdx, bool function(char) isDigitFunc) {
+    uint j = advanceWhile(str, startIdx, isDigitFunc);
+    return (j > startIdx) ? nullable(str[startIdx - 2 .. j]) : Nullable!string.init;
+}
+
+*/
