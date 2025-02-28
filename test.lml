@@ -1,5 +1,6 @@
 {
     a-12wa."1a" = ['a' 1 -2 true false null]
+	a--11 = [1 0b12]
 	a.b.c = 20
 	a.b.c = 11
 }

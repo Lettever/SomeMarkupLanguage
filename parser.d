@@ -70,14 +70,15 @@ struct Token {
 alias TokenArray = Token[];
 
 void main() {
-    string filePath = "./test2.lml";
+    string filePath = "./test.lml";
     string test = readText(filePath);
     Nullable!TokenArray tokens = Lexer.lex(test);
 	if (tokens.isNull()) {
         writeln("lexing failed");
         return;
 	}
-	tokens.get().each!(x => x.print());
+	// tokens.get().each!(x => x.print());
+    writeln(isValid(tokens.get()));
     Nullable!JSONValue parsed = Parser.toJson(tokens.get().removeWhiteSpace(), false);
     if (parsed.isNull()) {
         writeln("Parsing failed");
@@ -87,6 +88,19 @@ void main() {
 }
 
 TokenArray removeWhiteSpace(TokenArray tokens) => tokens.filter!((x) => x.type != TokenType.WhiteSpace).array();
+
+bool isValid(TokenArray tokens) {
+    for (int i = 0; i < tokens.length - 1; i++) {
+        auto token = tokens[i], nextToken = tokens[i + 1];
+        if (token.type == nextToken.type && token.type == TokenType.Number) {
+            writeln("Bad at:");
+            token.print();
+            nextToken.print();
+            return false;
+        }
+    }
+    return true;
+}
 
 bool canAppend(TokenArray tokens, TokenType type) {
     if (tokens.length == 0) return true;
@@ -100,9 +114,7 @@ struct Lexer {
     string[] errors;
     int row = 1, col = 1;
     
-    static Nullable!TokenArray lex(string str) {
-        return Lexer(str, 0).impl();
-    }
+    static Nullable!TokenArray lex(string str) => Lexer(str, 0).impl();
     
     private Nullable!Token makeAndAdvance(TokenType type, string span) {
         i += span.length;
@@ -181,8 +193,6 @@ struct Lexer {
     }
     
     private Nullable!string parseNumber() {
-        ulong len = str.length;
-        
         if (str[i] == '0' && str.getC(i + 1, '\0') != '.') {
             return parseSpecialNumber();
         }
@@ -199,7 +209,7 @@ struct Lexer {
         }
         return nullable(str[i .. j]);
     }
-    
+
     private uint parseIntegerPart(uint i) {
         return advanceWhile(str, i + 1, &isDigit);
     }
@@ -218,10 +228,10 @@ struct Lexer {
         ];
         if (i == str.length - 1) return nullable("0");
         auto n = str[i + 1];
-        
+
         if(n in m) {
             uint j = advanceWhile(str, i + 2, m[n]);
-            if (i == j) return Nullable!string.init;
+            if (i + 2 == j) return Nullable!string.init;
             return nullable(str[i .. j]);
         }
         return nullable("0");
@@ -433,6 +443,7 @@ struct Parser {
     }
 }
 
+
 JSONValue foo(JSONValue json, string[] keys, JSONValue val) {
 	if (keys.length == 0) {
 		return val;
@@ -443,61 +454,3 @@ JSONValue foo(JSONValue json, string[] keys, JSONValue val) {
 	json[keys[0]] = foo(json[keys[0]], keys[1 .. $], val);
 	return json;
 }
-/*
-private Nullable!string parseNumber() {
-    ulong len = str.length;
-    if (i >= len) return Nullable!string.init; // Check bounds
-
-    if (str[i] == '0') {
-        if (i + 1 >= len) return nullable("0"); // Single '0'
-
-        char nextChar = str.getC(i + 1, '\0');
-        if (nextChar != '.') {
-            switch (nextChar.toLower()) {
-                case 'x': return parseNumberWithBase(i + 2, &isHexDigit);    // Hex
-                case 'o': return parseNumberWithBase(i + 2, &isOctalDigit); // Octal
-                case 'b': return parseNumberWithBase(i + 2, &isBinaryDigit); // Binary
-                case ' ': return nullable("0"); // '0 ' case
-                default: return Nullable!string.init; // Invalid format
-            }
-        }
-    }
-
-    // Parse integer part
-    uint j = advanceWhile(str, i, &isDigit);
-    if (j >= len) return nullable(str[i .. j]); // No fractional part or exponent
-
-    // Parse fractional part (if any)
-    if (str.getC(j, '\0') == '.') {
-        if (j + 1 >= len || !str.getC(j + 1, '\0').isDigit()) {
-            return Nullable!string.init; // Invalid fractional part
-        }
-        j = advanceWhile(str, j + 1, &isDigit);
-    }
-
-    // Parse exponent part (if any)
-    if (j < len && (str[j] == 'e' || str[j] == 'E')) {
-        j++; // Move past 'e' or 'E'
-
-        // Parse optional sign
-        if (j < len && (str[j] == '+' || str[j] == '-')) {
-            j++;
-        }
-
-        // Parse exponent digits
-        uint exponentStart = j;
-        j = advanceWhile(str, j, &isDigit);
-        if (j == exponentStart) {
-            return Nullable!string.init; // No digits in exponent
-        }
-    }
-
-    return nullable(str[i .. j]);
-}
-
-private Nullable!string parseNumberWithBase(uint startIdx, bool function(char) isDigitFunc) {
-    uint j = advanceWhile(str, startIdx, isDigitFunc);
-    return (j > startIdx) ? nullable(str[startIdx - 2 .. j]) : Nullable!string.init;
-}
-
-*/
