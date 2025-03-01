@@ -77,6 +77,7 @@ void main() {
         writeln("lexing failed");
         return;
 	}
+	//return;
 	// tokens.get().each!(x => x.print());
     writeln(isValid(tokens.get()));
     Nullable!JSONValue parsed = Parser.toJson(tokens.get().removeWhiteSpace(), false);
@@ -174,17 +175,30 @@ struct Lexer {
     
     private Nullable!TokenArray impl() {
         TokenArray tokens = [];
-        while (true) {
-            auto token = next();
+        for (Nullable!Token token = next();; token = next()) {
             if (token.isNull()) {
-                writeln("Lexing failed");
+                writeln("Lexing failed fuck you");
                 return Nullable!TokenArray.init;
             }
-            if (token.get().type == TokenType.EOF) break;
-            if (!canAppend(tokens, token.get().type)) continue;
-            tokens ~= token.get();
+            
+            Token t = token.get();
+            if (t.type == TokenType.EOF) break;
+            if (!canAppend(tokens, t.type)) continue;
+            tokens ~= t;
         }
         return nullable(tokens);
+        // TokenArray tokens = [];
+        // while (true) {
+        //     auto token = next();
+        //     if (token.isNull()) {
+        //         writeln("Lexing failed");
+        //         return Nullable!TokenArray.init;
+        //     }
+        //     if (token.get().type == TokenType.EOF) break;
+        //     if (!canAppend(tokens, token.get().type)) continue;
+        //     tokens ~= token.get();
+        // }
+        // return nullable(tokens);
     }
     
     private string parseIdentifier() {
